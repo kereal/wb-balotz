@@ -428,7 +428,7 @@ async function main() {
       newProducts.slice(0, 10).forEach((p, i) => {
         console.log(`  ${i + 1}. ${p.name?.substring(0, 45)}...`);
         console.log(`     💰 ${p.sale_price || p.price}₽ | 🎁 ${p.feedback_points || 0} баллов | ⭐ ${p.review_rating || '-'} | 💬 ${p.feedbacks || 0}`);
-        console.log(`     🔗 wb.ru/catalog/${p.wb_id}`);
+        console.log(`     🔗 ${p.url}`);
       });
       
       if (newProducts.length > 10) {
@@ -525,9 +525,9 @@ function showNewProducts(limit = 20) {
   
   products.forEach((p, i) => {
     console.log(`  ${i + 1}. ${p.name?.substring(0, 45)}...`);
-    console.log(`     💰 ${p.sale_price || p.price}₽ | ⭐ ${p.review_rating || '-'} | 💬 ${p.feedbacks || 0}`);
+    console.log(`     💰 ${p.sale_price || p.price}₽ | 🎁 ${p.feedback_points || 0} баллов | ⭐ ${p.review_rating || '-'} | 💬 ${p.feedbacks || 0}`);
     console.log(`     🏷️ ${p.brand || '-'} | 📅 ${p.found_at}`);
-    console.log(`     🔗 wb.ru/catalog/${p.wb_id}`);
+    console.log(`     🔗 ${p.url}`);
   });
   
   const total = db.prepare('SELECT COUNT(*) as count FROM new_products').get();
