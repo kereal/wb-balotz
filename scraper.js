@@ -207,14 +207,30 @@ async function fetchProducts() {
           '--metrics-recording-only',
           '--no-first-run',
           '--safebrowsing-disable-auto-update',
+          '--single-process',           // Экономия памяти: один процесс
+          '--disable-features=IsolateOrigins,site-per-process',
         ],
         timeout: CONFIG.browserTimeout
       });
       
       const page = await browser.newPage();
       
+      // === БЛОКИРОВКА РЕСУРСОВ ДЛЯ ЭКОНОМИИ ПАМЯТИ ===
+      await page.setRequestInterception(true);
+      let blockedCount = 0;
+      page.on('request', (req) => {
+        const type = req.resourceType();
+        // Блокируем изображения, шрифты, стили, медиа
+        if (['image', 'font', 'stylesheet', 'media'].includes(type)) {
+          blockedCount++;
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+      
       // Настройка страницы
-      await page.setViewport({ width: 1920, height: 1080 });
+      await page.setViewport({ width: 1280, height: 720 });  // Меньшее разрешение = меньше памяти
       
       // Реалистичные заголовки
       await page.setUserAgent(
