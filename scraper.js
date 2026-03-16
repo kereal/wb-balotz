@@ -253,7 +253,7 @@ async function fetchProducts() {
       // === БЛОКИРОВКА РЕСУРСОВ ===
       await page.setRequestInterception(true);
       let blockedCount = 0;
-      const blockedTypes = ['image', 'font', 'stylesheet', 'media', 'websocket', 'ping', 'beacon', 'other'];
+      const blockedTypes = ['image', 'font'];
       
       page.on('request', (req) => {
         const type = req.resourceType();
