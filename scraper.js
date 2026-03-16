@@ -24,6 +24,7 @@ puppeteer.use(StealthPlugin());
 const CONFIG = {
   // URL акции
   targetUrl: 'https://www.wildberries.ru/promotions/bally-za-otzyvy',
+  warmupUrl: 'https://www.wildberries.ru',
   
   // Retry настройки
   maxRetries: 5,
@@ -33,9 +34,13 @@ const CONFIG = {
   // Browser настройки
   browserTimeout: 90000,
   pageLoadTimeout: 60000,
-  waitAfterLoad: 20000,
+  waitAfterLoad: 25000,   // Увеличено для стабильности
   scrollCount: 10,
-  scrollDelay: 2000,
+  scrollDelay: 2500,
+  
+  // Warmup настройки (прогрев сессии)
+  warmupEnabled: true,
+  warmupWait: 8000,       // Ждать после прогрева
   
   // Пути
   dbPath: path.join(__dirname, 'products.db'),
@@ -210,10 +215,25 @@ async function fetchProducts() {
       
       // Настройка страницы
       await page.setViewport({ width: 1920, height: 1080 });
+      
+      // Реалистичные заголовки
       await page.setUserAgent(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
         '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       );
+      
+      // Дополнительные заголовки для реалистичности
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
+      });
       
       // Устанавливаем таймауты
       page.setDefaultTimeout(CONFIG.pageLoadTimeout);
@@ -221,6 +241,7 @@ async function fetchProducts() {
       
       // Перехват API ответов
       const apiData = [];
+      let error498Count = 0;
       
       page.on('response', async (response) => {
         const url = response.url();
@@ -236,12 +257,43 @@ async function fetchProducts() {
           } catch (e) {
             // Не JSON, игнорируем
           }
+        } else if (status === 498) {
+          error498Count++;
+          // Не логируем 498 как ошибку - это нормально в начале
+          if (error498Count <= 2) {
+            logger.timer(`Ожидание antibot... (${error498Count})`);
+          }
         } else if (status >= 400) {
           logger.warning(`HTTP ${status}: ${url.substring(0, 60)}...`);
         }
       });
       
-      // Загружаем страницу
+      // ПРОГРЕВ СЕССИИ - сначала заходим на главную
+      if (CONFIG.warmupEnabled) {
+        logger.timer('Прогрев сессии (главная страница)...');
+        
+        try {
+          await page.goto(CONFIG.warmupUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: CONFIG.pageLoadTimeout
+          });
+          
+          // Ждём и эмулируем поведение человека
+          await delay(CONFIG.warmupWait);
+          
+          // Небольшая прокрутка
+          await page.evaluate(() => {
+            window.scrollTo(0, 500);
+          });
+          await delay(2000);
+          
+          logger.success('Сессия прогрета');
+        } catch (e) {
+          logger.warning('Ошибка прогрева: ' + e.message);
+        }
+      }
+      
+      // Загружаем целевую страницу
       logger.api('Загрузка страницы: ' + CONFIG.targetUrl);
       
       await page.goto(CONFIG.targetUrl, {
@@ -252,18 +304,23 @@ async function fetchProducts() {
       logger.timer('Ожидание загрузки данных...');
       await delay(CONFIG.waitAfterLoad);
       
-      // Прокрутка для подгрузки товаров
+      // Прокрутка для подгрузки товаров (со случайными задержками)
       logger.scrape('Прокрутка страницы...');
       
       for (let i = 0; i < CONFIG.scrollCount; i++) {
         if (isShuttingDown) break;
         
-        await page.evaluate(() => {
-          window.scrollTo(0, document.body.scrollHeight);
-        });
+        // Случайная прокрутка (иногда немного вверх, иногда вниз)
+        const scrollAmount = i % 3 === 0 ? -200 : 800 + Math.random() * 400;
+        await page.evaluate((amount) => {
+          window.scrollBy(0, amount);
+        }, scrollAmount);
         
         logger.progress(i + 1, CONFIG.scrollCount);
-        await delay(CONFIG.scrollDelay);
+        
+        // Случайная задержка 2-4 секунды
+        const randomDelay = CONFIG.scrollDelay + Math.random() * 2000;
+        await delay(randomDelay);
       }
       
       console.log(''); // Новая строка после progress
