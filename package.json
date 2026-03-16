@@ -1,0 +1,26 @@
+{
+  "name": "wb-scraper",
+  "version": "2.0.0",
+  "description": "WB Scraper - Отслеживание товаров с акцией Баллы за отзыв",
+  "main": "scraper.js",
+  "scripts": {
+    "scrape": "node scraper.js",
+    "web": "node server.js",
+    "stats": "node scraper.js --stats",
+    "new": "node scraper.js --new",
+    "history": "node scraper.js --history",
+    "watch": "node watcher.js"
+  },
+  "keywords": ["wildberries", "scraper", "promo"],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.13.6",
+    "better-sqlite3": "^12.8.0",
+    "express": "^4.18.2",
+    "puppeteer": "^24.39.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

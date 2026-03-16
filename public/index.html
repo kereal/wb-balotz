@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WB Scraper - Баллы за отзыв</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #e5e5e5;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    header {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      border-bottom: 1px solid #2a2a4a;
+      padding: 25px 20px;
+      margin-bottom: 25px;
+    }
+    
+    header h1 {
+      font-size: 22px;
+      margin-bottom: 5px;
+      background: linear-gradient(90deg, #a855f7, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    header p {
+      color: #888;
+      font-size: 13px;
+    }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    
+    .stat-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #a855f7;
+    }
+    
+    .stat-card .label {
+      color: #666;
+      font-size: 12px;
+      margin-top: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .stat-card.success .value { color: #22c55e; }
+    .stat-card.error .value { color: #ef4444; }
+    
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .tab {
+      padding: 10px 18px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      color: #888;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    
+    .tab:hover {
+      border-color: #a855f7;
+      color: #a855f7;
+    }
+    
+    .tab.active {
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      border-color: transparent;
+      color: white;
+    }
+    
+    .search-box {
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    .search-box input {
+      width: 100%;
+      padding: 10px 15px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      color: #e5e5e5;
+      font-size: 14px;
+    }
+    
+    .search-box input:focus {
+      outline: none;
+      border-color: #a855f7;
+    }
+    
+    .search-box input::placeholder {
+      color: #555;
+    }
+    
+    .products-count {
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 15px;
+      padding-left: 5px;
+    }
+    
+    .products {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .product-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      gap: 15px;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+    
+    .product-card:hover {
+      border-color: #3a3a4a;
+    }
+    
+    .product-info {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .product-name {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 8px;
+      color: #fff;
+      word-wrap: break-word;
+    }
+    
+    .product-meta {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 10px;
+    }
+    
+    .product-meta span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .product-footer {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    
+    .price {
+      font-size: 20px;
+      font-weight: 700;
+      color: #22c55e;
+    }
+    
+    .old-price {
+      text-decoration: line-through;
+      color: #555;
+      font-size: 14px;
+    }
+    
+    .points-badge {
+      padding: 4px 10px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    
+    .product-link {
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+    
+    .product-link:hover {
+      opacity: 0.9;
+    }
+    
+    .badge {
+      padding: 3px 8px;
+      background: #22c55e;
+      color: #000;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    
+    .empty, .loading, .error {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    
+    .empty-icon { font-size: 48px; margin-bottom: 15px; }
+    
+    .error { color: #ef4444; }
+    
+    .history-item {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 12px 15px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+    }
+    
+    .history-status {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    
+    .history-status.success {
+      background: #166534;
+      color: #22c55e;
+    }
+    
+    .history-status.error {
+      background: #7f1d1d;
+      color: #ef4444;
+    }
+    
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
+    .pagination button {
+      padding: 10px 20px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .pagination button:hover:not(:disabled) {
+      border-color: #a855f7;
+      color: #a855f7;
+    }
+    
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    footer {
+      text-align: center;
+      padding: 30px;
+      color: #444;
+      font-size: 12px;
+    }
+    
+    @media (max-width: 600px) {
+      .product-card { flex-direction: column; }
+      .product-footer { flex-direction: column; align-items: flex-start; }
+      .stat-card .value { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>🛒 WB Scraper - Баллы за отзыв</h1>
+      <p>Отслеживание новых товаров с акцией</p>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="stats" id="stats">
+      <div class="stat-card">
+        <div class="value" id="stat-total">-</div>
+        <div class="label">Всего</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-new">-</div>
+        <div class="label">Новых</div>
+      </div>
+      <div class="stat-card success">
+        <div class="value" id="stat-success">-</div>
+        <div class="label">Успешных</div>
+      </div>
+      <div class="stat-card error">
+        <div class="value" id="stat-errors">-</div>
+        <div class="label">Ошибок</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="tabs">
+        <button class="tab active" data-tab="new">🆕 Новые</button>
+        <button class="tab" data-tab="all">📦 Все</button>
+        <button class="tab" data-tab="history">📜 История</button>
+      </div>
+      <div class="search-box" id="search-box">
+        <input type="text" id="search" placeholder="Поиск по названию или бренду...">
+      </div>
+    </div>
+
+    <div class="products-count" id="count"></div>
+    
+    <div class="products" id="products">
+      <div class="loading">Загрузка...</div>
+    </div>
+    
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <footer>
+    WB Scraper v2.0 | Логи: logs/scraper-YYYY-MM-DD.log
+  </footer>
+
+  <script>
+    let currentTab = 'new';
+    let currentPage = 0;
+    const limit = 30;
+    
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const json = await res.json();
+        if (json.success) {
+          const s = json.data;
+          document.getElementById('stat-total').textContent = s.total || 0;
+          document.getElementById('stat-new').textContent = s.new_count || 0;
+          document.getElementById('stat-success').textContent = s.success_scans || 0;
+          document.getElementById('stat-errors').textContent = s.error_scans || 0;
+        }
+      } catch (e) {
+        console.error('Stats error:', e);
+      }
+    }
+    
+    async function loadProducts(tab = 'new', search = '', page = 0) {
+      const container = document.getElementById('products');
+      const countEl = document.getElementById('count');
+      const pagination = document.getElementById('pagination');
+      
+      container.innerHTML = '<div class="loading">Загрузка...</div>';
+      countEl.textContent = '';
+      pagination.innerHTML = '';
+      
+      try {
+        let url, dataKey;
+        
+        if (tab === 'history') {
+          url = '/api/history?limit=20';
+          dataKey = 'history';
+        } else if (search) {
+          url = `/api/search?q=${encodeURIComponent(search)}&limit=100`;
+          dataKey = 'products';
+        } else {
+          url = `/api/${tab}?limit=${limit}&offset=${page * limit}`;
+          dataKey = 'products';
+        }
+        
+        const res = await fetch(url);
+        const json = await res.json();
+        
+        if (!json.success) {
+          throw new Error(json.error || 'Ошибка загрузки');
+        }
+        
+        const data = json.data;
+        const total = json.total || data.length;
+        
+        if (tab === 'history') {
+          renderHistory(data);
+          return;
+        }
+        
+        countEl.textContent = `Найдено: ${total} товаров`;
+        
+        if (data.length === 0) {
+          container.innerHTML = `
+            <div class="empty">
+              <div class="empty-icon">📦</div>
+              <p>Нет товаров</p>
+              <p style="font-size: 13px; margin-top: 10px; color: #444;">Запустите scraper.js для поиска</p>
+            </div>
+          `;
+          return;
+        }
+        
+        container.innerHTML = data.map(p => `
+          <div class="product-card">
+            <div class="product-info">
+              <div class="product-name">${escapeHtml(p.name)}</div>
+              <div class="product-meta">
+                <span>🏷️ ${escapeHtml(p.brand) || 'Нет бренда'}</span>
+                <span>⭐ ${p.review_rating || '-'}</span>
+                <span>💬 ${p.feedbacks || 0}</span>
+                ${tab === 'new' ? '<span class="badge">NEW</span>' : ''}
+              </div>
+              <div class="product-footer">
+                <span class="price">${p.sale_price || p.price}₽</span>
+                ${p.sale_price && p.price !== p.sale_price ? `<span class="old-price">${p.price}₽</span>` : ''}
+                ${p.feedback_points ? `<span class="points-badge">🎁 ${p.feedback_points} баллов</span>` : ''}
+              </div>
+            </div>
+            <a href="${p.url}" target="_blank" class="product-link">Открыть →</a>
+          </div>
+        `).join('');
+        
+        // Pagination
+        if (total > limit && !search) {
+          const pages = Math.ceil(total / limit);
+          pagination.innerHTML = `
+            <button ${page === 0 ? 'disabled' : ''} onclick="loadProducts('${tab}', '', ${page - 1})">← Назад</button>
+            <span style="color: #666; padding: 10px;">${page + 1} / ${pages}</span>
+            <button ${page >= pages - 1 ? 'disabled' : ''} onclick="loadProducts('${tab}', '', ${page + 1})">Вперёд →</button>
+          `;
+        }
+        
+      } catch (e) {
+        container.innerHTML = `<div class="error">❌ Ошибка: ${escapeHtml(e.message)}</div>`;
+      }
+    }
+    
+    function renderHistory(data) {
+      const container = document.getElementById('products');
+      
+      if (data.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">📜</div><p>История пуста</p></div>';
+        return;
+      }
+      
+      container.innerHTML = data.map(h => `
+        <div class="history-item">
+          <div>
+            <span style="color: #888;">${h.started_at}</span>
+            <span style="margin-left: 15px;">Товаров: <b>${h.products_found}</b></span>
+            <span style="margin-left: 15px;">Новых: <b style="color: #22c55e;">${h.new_products}</b></span>
+          </div>
+          <span class="history-status ${h.status}">${h.status === 'success' ? '✓ OK' : '✗ Error'}</span>
+        </div>
+      `).join('');
+    }
+    
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentTab = tab.dataset.tab;
+        currentPage = 0;
+        
+        document.getElementById('search-box').style.display = 
+          currentTab === 'history' ? 'none' : 'block';
+        document.getElementById('search').value = '';
+        
+        loadProducts(currentTab);
+      });
+    });
+    
+    // Search
+    let searchTimeout;
+    document.getElementById('search').addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        if (e.target.value.trim()) {
+          loadProducts(null, e.target.value.trim());
+        } else {
+          loadProducts(currentTab);
+        }
+      }, 300);
+    });
+    
+    // Init
+    loadStats();
+    loadProducts('new');
+    
+    // Refresh stats every minute
+    setInterval(loadStats, 60000);
+  </script>
+</body>
+</html>
