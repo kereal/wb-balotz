@@ -422,6 +422,8 @@ async function fetchProducts() {
         
         productList.forEach(p => {
           if (!p.id && !p.nmId) return;
+          // Пропускаем товары без баллов
+          if (!p.feedbackPoints || p.feedbackPoints <= 0) return;
           
           const { price, salePrice } = extractPrice(p);
           

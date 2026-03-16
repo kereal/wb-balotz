@@ -5,10 +5,10 @@ node_modules/
 logs/
 *.log
 
-# Database (optional - uncomment if you don't want to track DB)
-# products.db
-# products.db-wal
-# products.db-shm
+# Database
+products.db
+products.db-wal
+products.db-shm
 
 # Data files
 data/

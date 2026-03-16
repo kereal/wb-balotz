@@ -7,30 +7,23 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .product-img {
-      width: 60px;
-      height: 60px;
+      width: 50px;
+      height: 50px;
       object-fit: cover;
       border-radius: 6px;
       background: #1f2937;
+      flex-shrink: 0;
     }
     .row-hover:hover {
-      background: rgba(124, 58, 237, 0.1);
+      background: rgba(124, 58, 237, 0.08);
     }
     .points-badge {
       background: linear-gradient(135deg, #f59e0b, #d97706);
       color: #000;
       font-weight: 700;
     }
-    .scrollbar-thin::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .scrollbar-thin::-webkit-scrollbar-track {
-      background: #1f2937;
-    }
-    .scrollbar-thin::-webkit-scrollbar-thumb {
-      background: #374151;
-      border-radius: 3px;
+    .real-price {
+      color: #22d3ee;
     }
   </style>
 </head>
@@ -41,9 +34,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <span class="text-xl">🎯</span>
-          <div>
-            <h1 class="text-lg font-bold text-purple-400">WB Баллы за отзыв</h1>
-          </div>
+          <h1 class="text-lg font-bold text-purple-400">WB Баллы за отзыв</h1>
         </div>
         <div class="flex items-center gap-2 text-xs text-gray-500">
           <span id="stat-new" class="text-green-400 font-bold">-</span> новых
@@ -86,14 +77,15 @@
     </div>
 
     <!-- Table Header -->
-    <div id="table-header" class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 text-xs text-gray-500 border-b border-gray-800 bg-gray-900/50 rounded-t-lg">
+    <div id="table-header" class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 text-xs text-gray-500 border-b border-gray-800 bg-gray-900/50 rounded-t-lg items-center">
       <div class="col-span-1">Фото</div>
       <div class="col-span-4">Название</div>
-      <div class="col-span-2">Бренд</div>
       <div class="col-span-1 text-right">Цена</div>
       <div class="col-span-1 text-center">Баллы</div>
+      <div class="col-span-1 text-right">Реально</div>
       <div class="col-span-1 text-center">Рейтинг</div>
-      <div class="col-span-2 text-right">Действие</div>
+      <div class="col-span-2">Бренд</div>
+      <div class="col-span-1 text-right">Ссылка</div>
     </div>
 
     <!-- Products List -->
@@ -110,31 +102,6 @@
     let currentPage = 0;
     let currentMinPoints = 0;
     const limit = 50;
-
-    // WB Image URL - правильный формат
-    function getWbImageUrl(id) {
-      if (!id) return '';
-      const vol = Math.floor(id / 100000);
-      const part = Math.floor(id / 1000);
-      // WB использует basket-01 до basket-12
-      const basket = vol >= 1000 ? Math.floor(vol / 100) : 0;
-      const basketNum = basket > 0 ? String(basket + 1).padStart(2, '0') : '01';
-      return `https://basket-${basketNum}.wbbasket.ru/vol${vol}/part${part}/${id}/images/tine/1.webp`;
-    }
-
-    // Alternative image URLs to try
-    function getImageUrls(id) {
-      if (!id) return [];
-      const vol = Math.floor(id / 100000);
-      const part = Math.floor(id / 1000);
-      return [
-        `https://basket-01.wbbasket.ru/vol${vol}/part${part}/${id}/images/tine/1.webp`,
-        `https://basket-02.wbbasket.ru/vol${vol}/part${part}/${id}/images/tine/1.webp`,
-        `https://basket-05.wbbasket.ru/vol${vol}/part${part}/${id}/images/tine/1.webp`,
-        `https://basket-10.wbbasket.ru/vol${vol}/part${part}/${id}/images/tine/1.webp`,
-        `https://images.wbstatic.net/tine/${id}.jpg`,
-      ];
-    }
 
     function formatPrice(price) {
       return new Intl.NumberFormat('ru-RU').format(price);
@@ -208,15 +175,20 @@
         }
 
         // Render as list rows
-        container.innerHTML = data.map(p => `
+        container.innerHTML = data.map(p => {
+          const price = p.sale_price || p.price || 0;
+          const points = p.feedback_points || 0;
+          const realPrice = price - points;
+          
+          return `
           <a href="${p.url}" target="_blank" 
             class="row-hover grid grid-cols-12 gap-2 items-center px-3 py-2 bg-gray-900/30 border border-gray-800/50 rounded-lg transition-colors">
             
             <!-- Image -->
-            <div class="col-span-2 md:col-span-1">
+            <div class="col-span-2 md:col-span-1 flex items-center">
               <img class="product-img" 
-                src="https://images.wbstatic.net/c252x336/new/${String(p.wb_id).slice(0, -4)}0000/${p.wb_id}-1.jpg"
-                onerror="this.onerror=null; this.src='https://images.wbstatic.net/tine/${p.wb_id}.jpg'; this.onerror=function(){this.style.display='none'; this.parentElement.innerHTML='<div class=\\'w-[60px] h-[60px] bg-gray-800 rounded flex items-center justify-center text-xl\\'>📦</div>'}"
+                src="https://images.wbstatic.net/c252x336/new/${Math.floor(p.wb_id / 10000) * 10000}/${p.wb_id}-1.jpg"
+                onerror="this.onerror=null;this.src='https://catalog.wb.ru/images/${p.wb_id}/images/c246x328/1.webp';this.onerror=function(){this.parentElement.innerHTML='<div class=\\'w-[50px] h-[50px] bg-gray-800 rounded flex items-center justify-center\\'>📦</div>'}"
                 loading="lazy">
             </div>
             
@@ -225,24 +197,24 @@
               <div class="text-sm text-gray-200 line-clamp-2 leading-tight">${escapeHtml(p.name)}</div>
             </div>
             
-            <!-- Brand -->
-            <div class="hidden md:block md:col-span-2">
-              <span class="text-xs text-purple-400">${escapeHtml(p.brand) || '-'}</span>
-            </div>
-            
             <!-- Price -->
             <div class="hidden md:block md:col-span-1 text-right">
-              <span class="text-green-400 font-bold text-sm">${formatPrice(p.sale_price || p.price)}₽</span>
+              <span class="text-green-400 font-bold text-sm">${formatPrice(price)}₽</span>
               ${p.price !== p.sale_price && p.sale_price ? `<div class="text-xs text-gray-600 line-through">${formatPrice(p.price)}₽</div>` : ''}
             </div>
             
             <!-- Points -->
             <div class="hidden md:block md:col-span-1 text-center">
-              ${p.feedback_points > 0 ? `
+              ${points > 0 ? `
                 <span class="points-badge inline-block px-2 py-0.5 rounded text-xs">
-                  🎁 ${p.feedback_points}
+                  🎁 ${points}
                 </span>
               ` : '<span class="text-gray-600">-</span>'}
+            </div>
+            
+            <!-- Real Price (price - points) -->
+            <div class="hidden md:block md:col-span-1 text-right">
+              <span class="real-price font-bold text-sm">${formatPrice(realPrice)}₽</span>
             </div>
             
             <!-- Rating -->
@@ -253,13 +225,17 @@
               </span>
             </div>
             
+            <!-- Brand -->
+            <div class="hidden md:block md:col-span-2">
+              <span class="text-xs text-purple-400 truncate block">${escapeHtml(p.brand) || '-'}</span>
+            </div>
+            
             <!-- Action -->
-            <div class="hidden md:flex md:col-span-2 justify-end gap-2">
-              <span class="text-xs text-gray-500">${escapeHtml(p.seller?.substring(0, 15)) || ''}</span>
+            <div class="hidden md:flex md:col-span-1 justify-end">
               <span class="text-purple-400 text-sm">→</span>
             </div>
           </a>
-        `).join('');
+        `}).join('');
 
         // Pagination
         if (total > limit && !search) {
