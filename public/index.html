@@ -9,10 +9,13 @@
     .product-img {
       width: 50px;
       height: 50px;
-      object-fit: cover;
       border-radius: 6px;
-      background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
     }
     .row-hover:hover {
       background: rgba(124, 58, 237, 0.08);
@@ -78,7 +81,7 @@
 
     <!-- Table Header -->
     <div id="table-header" class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 text-xs text-gray-500 border-b border-gray-800 bg-gray-900/50 rounded-t-lg items-center">
-      <div class="col-span-1">Фото</div>
+      <div class="col-span-1">Товар</div>
       <div class="col-span-4">Название</div>
       <div class="col-span-1 text-right">Цена</div>
       <div class="col-span-1 text-center">Баллы</div>
@@ -114,15 +117,27 @@
       return div.innerHTML;
     }
 
-    // WB Image URL - используем imgproxy для обхода защиты
-    function getWbImageUrl(id) {
-      if (!id) return '';
-      const vol = Math.floor(id / 100000);
-      const part = Math.floor(id / 1000);
-      const basket = Math.floor(vol / 100) + 1;
-      const basketStr = String(basket).padStart(2, '0');
-      // Пробуем разные варианты basket
-      return `https://basket-${basketStr}.wbbasket.ru/vol${vol}/part${part}/${id}/images/c246x328/1.webp`;
+    // Генерация цвета на основе ID
+    function getColorById(id) {
+      const colors = [
+        ['#7c3aed', '#a855f7'], // purple
+        ['#059669', '#10b981'], // green
+        ['#dc2626', '#f87171'], // red
+        ['#0891b2', '#22d3ee'], // cyan
+        ['#ca8a04', '#facc15'], // yellow
+        ['#be185d', '#f472b6'], // pink
+        ['#1d4ed8', '#60a5fa'], // blue
+        ['#ea580c', '#fb923c'], // orange
+      ];
+      const index = id % colors.length;
+      return colors[index];
+    }
+
+    // Получить первые буквы названия
+    function getInitials(name) {
+      if (!name) return '?';
+      const words = name.trim().split(/\s+/).slice(0, 2);
+      return words.map(w => w[0]?.toUpperCase() || '').join('');
     }
 
     async function loadStats() {
@@ -190,19 +205,20 @@
           const price = p.sale_price || p.price || 0;
           const points = p.feedback_points || 0;
           const realPrice = price - points;
-          const vol = Math.floor(p.wb_id / 100000);
-          const part = Math.floor(p.wb_id / 1000);
+          const [bgColor, textColor] = getColorById(p.wb_id);
+          const initials = getInitials(p.name);
           
           return `
           <a href="${p.url}" target="_blank" 
             class="row-hover grid grid-cols-12 gap-2 items-center px-3 py-2 bg-gray-900/30 border border-gray-800/50 rounded-lg transition-colors">
             
-            <!-- Image -->
+            <!-- Image placeholder with initials -->
             <div class="col-span-2 md:col-span-1 flex items-center">
-              <img class="product-img" 
-                src="https://basket-05.wbbasket.ru/vol${vol}/part${part}/${p.wb_id}/images/c246x328/1.webp"
-                onerror="this.onerror=null;this.src='https://basket-01.wbbasket.ru/vol${vol}/part${part}/${p.wb_id}/images/c246x328/1.webp';this.onerror=function(){this.parentElement.innerHTML='<div class=\\'w-[50px] h-[50px] bg-gray-800 rounded flex items-center justify-center text-gray-600 text-xs\\'>№${p.wb_id.toString().slice(-4)}</div>'}"
-                loading="lazy">
+              <div class="product-img" 
+                style="background: linear-gradient(135deg, ${bgColor}, ${textColor}); color: white;"
+                title="${escapeHtml(p.name)}">
+                ${initials}
+              </div>
             </div>
             
             <!-- Name -->
