@@ -191,7 +191,7 @@ async function fetchProducts() {
     logger.scrape(`Попытка ${attempt}/${CONFIG.maxRetries}`);
     
     try {
-      // Запускаем браузер
+      // Запускаем браузер с агрессивной экономией памяти
       browser = await puppeteer.launch({
         headless: 'new',
         args: [
@@ -207,21 +207,57 @@ async function fetchProducts() {
           '--metrics-recording-only',
           '--no-first-run',
           '--safebrowsing-disable-auto-update',
-          '--single-process',           // Экономия памяти: один процесс
+          '--single-process',
           '--disable-features=IsolateOrigins,site-per-process',
+          // Агрессивная экономия памяти:
+          '--js-flags=--max-old-space-size=256,--expose-gc',  // Лимит V8 heap 256MB + expose GC
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-webgl',
+          '--disable-webgl2',
+          '--disable-webrtc',
+          '--disable-notifications',
+          '--disable-plugins',
+          '--disable-images',
+          '--blink-settings=imagesEnabled=false',
+          '--enable-low-end-device-mode',
         ],
-        timeout: CONFIG.browserTimeout
+        timeout: CONFIG.browserTimeout,
+        ignoreHTTPSErrors: true,
       });
       
       const page = await browser.newPage();
       
-      // === БЛОКИРОВКА РЕСУРСОВ ДЛЯ ЭКОНОМИИ ПАМЯТИ ===
+      // === ОТПРАВКА СКРИПТА ДО ЗАГРУЗКИ (отключаем API) ===
+      await page.evaluateOnNewDocument(() => {
+        // Отключаем тяжёлые API
+        window.addEventListener('DOMContentLoaded', () => {
+          // Отключаем Service Worker
+          if (navigator.serviceWorker) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+              regs.forEach(reg => reg.unregister());
+            });
+          }
+        });
+        
+        // Заглушки для экономии памяти
+        window.Notification = undefined;
+        window.WebGLRenderingContext = undefined;
+        window.WebGL2RenderingContext = undefined;
+      });
+      
+      // === БЛОКИРОВКА РЕСУРСОВ ===
       await page.setRequestInterception(true);
       let blockedCount = 0;
+      const blockedTypes = ['image', 'font', 'stylesheet', 'media', 'websocket', 'ping', 'beacon', 'other'];
+      
       page.on('request', (req) => {
         const type = req.resourceType();
-        // Блокируем изображения, шрифты, стили, медиа
-        if (['image', 'font', 'stylesheet', 'media'].includes(type)) {
+        if (blockedTypes.includes(type)) {
           blockedCount++;
           req.abort();
         } else {
@@ -344,7 +380,18 @@ async function fetchProducts() {
       // Ждём ещё для загрузки последних запросов
       await delay(5000);
       
-      // Закрываем браузер
+      // ОЧИСТКА ПАМЯТИ перед закрытием
+      await page.evaluate(() => {
+        // Очищаем DOM
+        document.body.innerHTML = '';
+        // Форсируем GC если доступен
+        if (window.gc) window.gc();
+      });
+      
+      logger.info(`Заблокировано ресурсов: ${blockedCount} (экономия памяти)`);
+      
+      // Закрываем страницу и браузер
+      await page.close();
       await browser.close();
       browser = null;
       
