@@ -34,13 +34,13 @@ const CONFIG = {
   // Browser настройки
   browserTimeout: 90000,
   pageLoadTimeout: 60000,
-  waitAfterLoad: 25000,   // Увеличено для стабильности
-  scrollCount: 10,
+  waitAfterLoad: 20000,
+  scrollCount: 5,
   scrollDelay: 2500,
   
   // Warmup настройки (прогрев сессии)
   warmupEnabled: true,
-  warmupWait: 8000,       // Ждать после прогрева
+  warmupWait: 6000,
   
   // Пути
   dbPath: path.join(__dirname, 'products.db'),

@@ -11,7 +11,7 @@
       height: 50px;
       object-fit: cover;
       border-radius: 6px;
-      background: #1f2937;
+      background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
       flex-shrink: 0;
     }
     .row-hover:hover {
@@ -114,6 +114,17 @@
       return div.innerHTML;
     }
 
+    // WB Image URL - используем imgproxy для обхода защиты
+    function getWbImageUrl(id) {
+      if (!id) return '';
+      const vol = Math.floor(id / 100000);
+      const part = Math.floor(id / 1000);
+      const basket = Math.floor(vol / 100) + 1;
+      const basketStr = String(basket).padStart(2, '0');
+      // Пробуем разные варианты basket
+      return `https://basket-${basketStr}.wbbasket.ru/vol${vol}/part${part}/${id}/images/c246x328/1.webp`;
+    }
+
     async function loadStats() {
       try {
         const res = await fetch('/api/stats');
@@ -179,6 +190,8 @@
           const price = p.sale_price || p.price || 0;
           const points = p.feedback_points || 0;
           const realPrice = price - points;
+          const vol = Math.floor(p.wb_id / 100000);
+          const part = Math.floor(p.wb_id / 1000);
           
           return `
           <a href="${p.url}" target="_blank" 
@@ -187,8 +200,8 @@
             <!-- Image -->
             <div class="col-span-2 md:col-span-1 flex items-center">
               <img class="product-img" 
-                src="https://images.wbstatic.net/c252x336/new/${Math.floor(p.wb_id / 10000) * 10000}/${p.wb_id}-1.jpg"
-                onerror="this.onerror=null;this.src='https://catalog.wb.ru/images/${p.wb_id}/images/c246x328/1.webp';this.onerror=function(){this.parentElement.innerHTML='<div class=\\'w-[50px] h-[50px] bg-gray-800 rounded flex items-center justify-center\\'>📦</div>'}"
+                src="https://basket-05.wbbasket.ru/vol${vol}/part${part}/${p.wb_id}/images/c246x328/1.webp"
+                onerror="this.onerror=null;this.src='https://basket-01.wbbasket.ru/vol${vol}/part${part}/${p.wb_id}/images/c246x328/1.webp';this.onerror=function(){this.parentElement.innerHTML='<div class=\\'w-[50px] h-[50px] bg-gray-800 rounded flex items-center justify-center text-gray-600 text-xs\\'>№${p.wb_id.toString().slice(-4)}</div>'}"
                 loading="lazy">
             </div>
             

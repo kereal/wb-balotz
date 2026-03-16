@@ -47,8 +47,7 @@ function runScraper() {
     
     const child = spawn('node', ['scraper.js'], {
       cwd: __dirname,
-      stdio: 'inherit',
-      shell: true
+      stdio: 'inherit'
     });
     
     child.on('close', (code) => {

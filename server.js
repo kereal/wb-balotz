@@ -42,7 +42,7 @@ app.get('/api/new', (req, res) => {
     let query = `SELECT * FROM new_products WHERE feedback_points >= ?`;
     const params = [minPoints];
     
-    query += ` ORDER BY feedback_points DESC, found_at DESC LIMIT ? OFFSET ?`;
+    query += ` ORDER BY found_at DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
     
     const products = db.prepare(query).all(...params);
@@ -71,7 +71,7 @@ app.get('/api/all', (req, res) => {
     let query = `SELECT * FROM all_products WHERE feedback_points >= ?`;
     const params = [minPoints];
     
-    query += ` ORDER BY feedback_points DESC, last_seen DESC LIMIT ? OFFSET ?`;
+    query += ` ORDER BY last_seen DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
     
     const products = db.prepare(query).all(...params);
