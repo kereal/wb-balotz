@@ -21,7 +21,9 @@ app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    logger.api(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+    if (!req.path.startsWith('/api/health')) {
+      logger.api(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+    }
   });
   next();
 });
@@ -35,14 +37,16 @@ app.get('/api/new', (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
+    const minPoints = parseInt(req.query.minPoints) || 0;
     
-    const products = db.prepare(`
-      SELECT * FROM new_products 
-      ORDER BY found_at DESC 
-      LIMIT ? OFFSET ?
-    `).all(limit, offset);
+    let query = `SELECT * FROM new_products WHERE feedback_points >= ?`;
+    const params = [minPoints];
     
-    const total = db.prepare('SELECT COUNT(*) as count FROM new_products').get();
+    query += ` ORDER BY feedback_points DESC, found_at DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+    
+    const products = db.prepare(query).all(...params);
+    const total = db.prepare('SELECT COUNT(*) as count FROM new_products WHERE feedback_points >= ?').get(minPoints);
     
     res.json({
       success: true,
@@ -62,14 +66,16 @@ app.get('/api/all', (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
     const offset = parseInt(req.query.offset) || 0;
+    const minPoints = parseInt(req.query.minPoints) || 0;
     
-    const products = db.prepare(`
-      SELECT * FROM all_products 
-      ORDER BY last_seen DESC 
-      LIMIT ? OFFSET ?
-    `).all(limit, offset);
+    let query = `SELECT * FROM all_products WHERE feedback_points >= ?`;
+    const params = [minPoints];
     
-    const total = db.prepare('SELECT COUNT(*) as count FROM all_products').get();
+    query += ` ORDER BY feedback_points DESC, last_seen DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+    
+    const products = db.prepare(query).all(...params);
+    const total = db.prepare('SELECT COUNT(*) as count FROM all_products WHERE feedback_points >= ?').get(minPoints);
     
     res.json({
       success: true,
@@ -91,6 +97,7 @@ app.get('/api/stats', (req, res) => {
       SELECT 
         (SELECT COUNT(*) FROM all_products) as total,
         (SELECT COUNT(*) FROM new_products) as new_count,
+        (SELECT COUNT(*) FROM new_products WHERE feedback_points > 0) as with_points,
         (SELECT MIN(first_seen) FROM all_products) as first_scan,
         (SELECT MAX(last_seen) FROM all_products) as last_scan,
         (SELECT COUNT(*) FROM scrape_history WHERE status = 'success') as success_scans,
@@ -127,6 +134,7 @@ app.get('/api/search', (req, res) => {
   try {
     const q = req.query.q || '';
     const limit = parseInt(req.query.limit) || 100;
+    const minPoints = parseInt(req.query.minPoints) || 0;
     
     if (!q.trim()) {
       return res.json({ success: true, data: [], total: 0 });
@@ -134,14 +142,32 @@ app.get('/api/search', (req, res) => {
     
     const products = db.prepare(`
       SELECT * FROM new_products 
-      WHERE name LIKE ? OR brand LIKE ?
-      ORDER BY found_at DESC 
+      WHERE (name LIKE ? OR brand LIKE ?) AND feedback_points >= ?
+      ORDER BY feedback_points DESC, found_at DESC 
       LIMIT ?
-    `).all(`%${q}%`, `%${q}%`, limit);
+    `).all(`%${q}%`, `%${q}%`, minPoints, limit);
     
     res.json({ success: true, data: products, total: products.length });
   } catch (error) {
     logger.error('API /api/search: ' + error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Категории товаров
+app.get('/api/categories', (req, res) => {
+  try {
+    const categories = db.prepare(`
+      SELECT category_id, COUNT(*) as count 
+      FROM new_products 
+      WHERE category_id > 0 AND feedback_points > 0
+      GROUP BY category_id 
+      ORDER BY count DESC
+    `).all();
+    
+    res.json({ success: true, data: categories });
+  } catch (error) {
+    logger.error('API /api/categories: ' + error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -172,6 +198,11 @@ app.delete('/api/new', (req, res) => {
     logger.error('API DELETE /api/new: ' + error.message);
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 // Error handler

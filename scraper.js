@@ -69,6 +69,7 @@ db.exec(`
     feedback_points INTEGER,
     brand TEXT,
     seller TEXT,
+    category_id INTEGER,
     review_rating REAL,
     feedbacks INTEGER,
     url TEXT,
@@ -86,6 +87,7 @@ db.exec(`
     feedback_points INTEGER,
     brand TEXT,
     seller TEXT,
+    category_id INTEGER,
     review_rating REAL,
     feedbacks INTEGER,
     url TEXT,
@@ -102,6 +104,14 @@ db.exec(`
     error TEXT
   );
 `);
+
+// Миграция: добавляем колонку category_id если её нет
+try {
+  db.exec(`ALTER TABLE all_products ADD COLUMN category_id INTEGER DEFAULT 0`);
+} catch (e) { /* колонка уже существует */ }
+try {
+  db.exec(`ALTER TABLE new_products ADD COLUMN category_id INTEGER DEFAULT 0`);
+} catch (e) { /* колонка уже существует */ }
 
 logger.db('База данных инициализирована');
 
@@ -423,6 +433,7 @@ async function fetchProducts() {
             feedback_points: p.feedbackPoints || 0,
             brand: p.brand || '',
             seller: p.supplier || '',
+            category_id: p.subjectId || p.subjectParentId || 0,
             review_rating: p.reviewRating || p.rating || 0,
             feedbacks: p.feedbacks || p.nmFeedbacks || 0,
             url: `https://www.wildberries.ru/catalog/${p.id || p.nmId}/detail.aspx`
@@ -515,14 +526,15 @@ async function main() {
     // Обновляем базу всех товаров
     const updateAll = db.prepare(`
       INSERT INTO all_products 
-        (wb_id, name, price, sale_price, feedback_points, brand, seller, review_rating, feedbacks, url, first_seen, last_seen, seen_count)
+        (wb_id, name, price, sale_price, feedback_points, brand, seller, category_id, review_rating, feedbacks, url, first_seen, last_seen, seen_count)
       VALUES 
-        (@wb_id, @name, @price, @sale_price, @feedback_points, @brand, @seller, @review_rating, @feedbacks, @url, datetime('now'), datetime('now'), 1)
+        (@wb_id, @name, @price, @sale_price, @feedback_points, @brand, @seller, @category_id, @review_rating, @feedbacks, @url, datetime('now'), datetime('now'), 1)
       ON CONFLICT(wb_id) DO UPDATE SET 
         name = excluded.name,
         price = excluded.price,
         sale_price = excluded.sale_price,
         feedback_points = excluded.feedback_points,
+        category_id = excluded.category_id,
         last_seen = datetime('now'),
         seen_count = seen_count + 1
     `);
@@ -538,9 +550,9 @@ async function main() {
     if (newProducts.length > 0) {
       const insertNew = db.prepare(`
         INSERT OR IGNORE INTO new_products 
-          (wb_id, name, price, sale_price, feedback_points, brand, seller, review_rating, feedbacks, url)
+          (wb_id, name, price, sale_price, feedback_points, brand, seller, category_id, review_rating, feedbacks, url)
         VALUES 
-          (@wb_id, @name, @price, @sale_price, @feedback_points, @brand, @seller, @review_rating, @feedbacks, @url)
+          (@wb_id, @name, @price, @sale_price, @feedback_points, @brand, @seller, @category_id, @review_rating, @feedbacks, @url)
       `);
       
       const insertNewTx = db.transaction((prods) => {
