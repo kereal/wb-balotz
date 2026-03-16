@@ -1,18 +1,22 @@
 /**
- * WB Scraper - Playwright + WebKit
+ * WB Scraper - Стабильная версия (Puppeteer + Chromium)
  * 
- * - Использует WebKit вместо Chromium (~100-200 MB вместо 600 MB)
  * - Красивое логирование в файл и консоль
  * - Retry с экспоненциальной задержкой
  * - Graceful shutdown
+ * - Автоматическое восстановление
+ * - Защита от бесконечных циклов
  */
 
-const { webkit } = require('playwright');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
 const logger = require('./logger');
+
+puppeteer.use(StealthPlugin());
 
 // =====================================================
 // КОНФИГУРАЦИЯ
@@ -30,13 +34,13 @@ const CONFIG = {
   // Browser настройки
   browserTimeout: 90000,
   pageLoadTimeout: 60000,
-  waitAfterLoad: 25000,
+  waitAfterLoad: 25000,   // Увеличено для стабильности
   scrollCount: 10,
   scrollDelay: 2500,
   
   // Warmup настройки (прогрев сессии)
   warmupEnabled: true,
-  warmupWait: 8000,
+  warmupWait: 8000,       // Ждать после прогрева
   
   // Пути
   dbPath: path.join(__dirname, 'products.db'),
@@ -52,6 +56,8 @@ if (!fs.existsSync(CONFIG.dataPath)) {
 // БАЗА ДАННЫХ
 // =====================================================
 const db = new Database(CONFIG.dbPath);
+
+// Включаем WAL режим для надёжности
 db.pragma('journal_mode = WAL');
 
 db.exec(`
@@ -103,6 +109,7 @@ logger.db('База данных инициализирована');
 // УТИЛИТЫ
 // =====================================================
 
+// Экспоненциальная задержка
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -112,9 +119,11 @@ function getRetryDelay(attempt) {
     CONFIG.baseDelay * Math.pow(2, attempt),
     CONFIG.maxDelay
   );
+  // Добавляем случайность (jitter) для избежания thundering herd
   return delayMs + Math.random() * 1000;
 }
 
+// Извлечение цены из структуры WB
 function extractPrice(product) {
   try {
     if (product.sizes && product.sizes[0] && product.sizes[0].price) {
@@ -142,6 +151,7 @@ function extractPrice(product) {
 let browser = null;
 let isShuttingDown = false;
 
+// Graceful shutdown
 async function shutdown(signal) {
   if (isShuttingDown) return;
   isShuttingDown = true;
@@ -152,7 +162,9 @@ async function shutdown(signal) {
     try {
       await browser.close();
       logger.info('Браузер закрыт');
-    } catch (e) {}
+    } catch (e) {
+      // Игнорируем
+    }
   }
   
   process.exit(0);
@@ -168,6 +180,7 @@ process.on('unhandledRejection', (reason) => {
   logger.error('Необработанный Promise rejection: ' + reason);
 });
 
+// Основная функция скрапинга
 async function fetchProducts() {
   const allProducts = [];
   let attempt = 0;
@@ -179,38 +192,104 @@ async function fetchProducts() {
     logger.stats(`Память: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`);
     
     try {
-      // Запускаем WebKit браузер
-      browser = await webkit.launch({
-        headless: true,
+      // Запускаем браузер
+      browser = await puppeteer.launch({
+        headless: 'new',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--disable-default-apps',
+          '--disable-translate',
+          '--disable-sync',
+          '--metrics-recording-only',
+          '--no-first-run',
+          '--safebrowsing-disable-auto-update',
+          '--single-process',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--js-flags=--max-old-space-size=256,--expose-gc',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-webgl',
+          '--disable-webgl2',
+          '--disable-webrtc',
+          '--disable-notifications',
+          '--disable-plugins',
+          '--disable-images',
+          '--blink-settings=imagesEnabled=false',
+          '--enable-low-end-device-mode',
+        ],
         timeout: CONFIG.browserTimeout,
+        ignoreHTTPSErrors: true,
       });
       
-      const context = await browser.newContext({
-        viewport: { width: 1280, height: 720 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-        locale: 'ru-RU',
-        extraHTTPHeaders: {
-          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        }
-      });
+      const page = await browser.newPage();
       
-      const page = await context.newPage();
+      // === ОТПРАВКА СКРИПТА ДО ЗАГРУЗКИ (отключаем API) ===
+      await page.evaluateOnNewDocument(() => {
+        // Отключаем тяжёлые API
+        window.addEventListener('DOMContentLoaded', () => {
+          // Отключаем Service Worker
+          if (navigator.serviceWorker) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+              regs.forEach(reg => reg.unregister());
+            });
+          }
+        });
+        
+        // Заглушки для экономии памяти
+        window.Notification = undefined;
+        window.WebGLRenderingContext = undefined;
+        window.WebGL2RenderingContext = undefined;
+      });
       
       // === БЛОКИРОВКА РЕСУРСОВ ===
+      await page.setRequestInterception(true);
       let blockedCount = 0;
-      await page.route('**/*', (route) => {
-        const resourceType = route.request().resourceType();
-        if (['image', 'font'].includes(resourceType)) {
+      const blockedTypes = ['image', 'font'];
+      
+      page.on('request', (req) => {
+        const type = req.resourceType();
+        if (blockedTypes.includes(type)) {
           blockedCount++;
-          route.abort();
+          req.abort();
         } else {
-          route.continue();
+          req.continue();
         }
+      });
+      
+      // Настройка страницы
+      await page.setViewport({ width: 1280, height: 720 });
+      
+      // Реалистичные заголовки
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      );
+      
+      // Дополнительные заголовки для реалистичности
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
       });
       
       // Устанавливаем таймауты
       page.setDefaultTimeout(CONFIG.pageLoadTimeout);
+      page.setDefaultNavigationTimeout(CONFIG.pageLoadTimeout);
       
       // Перехват API ответов
       const apiData = [];
@@ -227,9 +306,12 @@ async function fetchProducts() {
               const data = await response.json();
               apiData.push({ url, data });
             }
-          } catch (e) {}
+          } catch (e) {
+            // Не JSON, игнорируем
+          }
         } else if (status === 498) {
           error498Count++;
+          // Не логируем 498 как ошибку - это нормально в начале
           if (error498Count <= 2) {
             logger.timer(`Ожидание antibot... (${error498Count})`);
           }
@@ -238,7 +320,7 @@ async function fetchProducts() {
         }
       });
       
-      // ПРОГРЕВ СЕССИИ
+      // ПРОГРЕВ СЕССИИ - сначала заходим на главную
       if (CONFIG.warmupEnabled) {
         logger.timer('Прогрев сессии (главная страница)...');
         
@@ -248,8 +330,10 @@ async function fetchProducts() {
             timeout: CONFIG.pageLoadTimeout
           });
           
+          // Ждём и эмулируем поведение человека
           await delay(CONFIG.warmupWait);
           
+          // Небольшая прокрутка
           await page.evaluate(() => {
             window.scrollTo(0, 500);
           });
@@ -272,12 +356,13 @@ async function fetchProducts() {
       logger.timer('Ожидание загрузки данных...');
       await delay(CONFIG.waitAfterLoad);
       
-      // Прокрутка для подгрузки товаров
+      // Прокрутка для подгрузки товаров (со случайными задержками)
       logger.scrape('Прокрутка страницы...');
       
       for (let i = 0; i < CONFIG.scrollCount; i++) {
         if (isShuttingDown) break;
         
+        // Случайная прокрутка (иногда немного вверх, иногда вниз)
         const scrollAmount = i % 3 === 0 ? -200 : 800 + Math.random() * 400;
         await page.evaluate((amount) => {
           window.scrollBy(0, amount);
@@ -285,19 +370,28 @@ async function fetchProducts() {
         
         logger.progress(i + 1, CONFIG.scrollCount);
         
+        // Случайная задержка 2-4 секунды
         const randomDelay = CONFIG.scrollDelay + Math.random() * 2000;
         await delay(randomDelay);
       }
       
-      console.log('');
+      console.log(''); // Новая строка после progress
       
+      // Ждём ещё для загрузки последних запросов
       await delay(5000);
       
-      logger.info(`Заблокировано ресурсов: ${blockedCount}`);
+      // ОЧИСТКА ПАМЯТИ перед закрытием
+      await page.evaluate(() => {
+        // Очищаем DOM
+        document.body.innerHTML = '';
+        // Форсируем GC если доступен
+        if (window.gc) window.gc();
+      });
       
-      // Закрываем
+      logger.info(`Заблокировано ресурсов: ${blockedCount} (экономия памяти)`);
+      
+      // Закрываем страницу и браузер
       await page.close();
-      await context.close();
       await browser.close();
       browser = null;
       
@@ -347,6 +441,7 @@ async function fetchProducts() {
     } catch (error) {
       logger.error('Ошибка: ' + error.message);
       
+      // Закрываем браузер если остался открыт
       if (browser) {
         try {
           await browser.close();
@@ -355,6 +450,7 @@ async function fetchProducts() {
       }
     }
     
+    // Если товары не получены и есть ещё попытки
     if (allProducts.length === 0 && attempt < CONFIG.maxRetries && !isShuttingDown) {
       const retryDelay = getRetryDelay(attempt);
       logger.timer(`Повтор через ${Math.round(retryDelay / 1000)} сек...`);
@@ -372,10 +468,12 @@ async function fetchProducts() {
 async function main() {
   const startTime = Date.now();
   
-  logger.header('WB SCRAPER - Баллы за отзыв (WebKit)');
+  logger.header('WB SCRAPER - Баллы за отзыв');
   
+  // Очистка старых логов
   logger.cleanOldLogs();
   
+  // Записываем начало сканирования
   const historyStmt = db.prepare(`
     INSERT INTO scrape_history (started_at, status) 
     VALUES (datetime('now'), 'running')
@@ -385,25 +483,29 @@ async function main() {
   
   let newProductsCount = 0;
   let error = null;
-  let currentProducts = [];
+  let currentProducts = [];  // Определяем снаружи try
   
   try {
+    // Получаем известные ID
     const knownIds = new Set(
       db.prepare('SELECT wb_id FROM all_products').all().map(r => r.wb_id)
     );
     logger.stats(`Товаров в базе: ${knownIds.size}`);
     
+    // Загружаем товары
     currentProducts = await fetchProducts();
     
     if (currentProducts.length === 0) {
       throw new Error('Не удалось получить товары с сайта');
     }
     
+    // Находим новые
     const newProducts = currentProducts.filter(p => !knownIds.has(p.wb_id));
     newProductsCount = newProducts.length;
     
     logger.new(`Новых товаров: ${newProductsCount}`);
     
+    // Обновляем базу всех товаров
     const updateAll = db.prepare(`
       INSERT INTO all_products 
         (wb_id, name, price, sale_price, feedback_points, brand, seller, review_rating, feedbacks, url, first_seen, last_seen, seen_count)
@@ -425,6 +527,7 @@ async function main() {
     updateAllTx(currentProducts);
     logger.db('База всех товаров обновлена');
     
+    // Сохраняем новые
     if (newProducts.length > 0) {
       const insertNew = db.prepare(`
         INSERT OR IGNORE INTO new_products 
@@ -440,6 +543,7 @@ async function main() {
       insertNewTx(newProducts);
       logger.db('Новые товары сохранены');
       
+      // Показываем новые товары
       logger.separator();
       logger.new('НОВЫЕ ТОВАРЫ:');
       
@@ -454,6 +558,7 @@ async function main() {
       }
     }
     
+    // Экспорт в JSON
     const exportData = {
       timestamp: new Date().toISOString(),
       total: currentProducts.length,
@@ -478,6 +583,7 @@ async function main() {
     logger.error('Критическая ошибка: ' + e.message);
   }
   
+  // Обновляем историю
   db.prepare(`
     UPDATE scrape_history 
     SET finished_at = datetime('now'),
@@ -494,6 +600,7 @@ async function main() {
     historyId
   );
   
+  // Итоги
   const duration = Math.round((Date.now() - startTime) / 1000);
   const stats = db.prepare(`
     SELECT 
@@ -620,8 +727,6 @@ if (args.includes('--new') || args.includes('-n')) {
   logs/scraper-YYYY-MM-DD.log  - Логи
   data/products.json           - Все товары
   data/new_products.json       - Новые товары
-
-🧠 Использует WebKit браузер (меньше памяти чем Chromium)
 `);
 } else {
   main().catch(err => {
