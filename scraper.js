@@ -291,20 +291,27 @@ async function fetchProducts() {
       page.setDefaultTimeout(CONFIG.pageLoadTimeout);
       page.setDefaultNavigationTimeout(CONFIG.pageLoadTimeout);
       
-      // Перехват API ответов
+      // Перехват API ответов (только с feedbackPoints)
       const apiData = [];
       let error498Count = 0;
-      
+
       page.on('response', async (response) => {
         const url = response.url();
         const status = response.status();
-        
+
         if (status === 200) {
           try {
             const contentType = response.headers()['content-type'] || '';
-            if (contentType.includes('json')) {
+            // Берём только ответы с search API (там есть feedbackPoints)
+            if (contentType.includes('json') && url.includes('/search')) {
               const data = await response.json();
-              apiData.push({ url, data });
+              const products = data.data?.products || data.products || [];
+              // Проверяем что есть товары с feedbackPoints
+              const withPoints = products.filter(p => p.feedbackPoints > 0);
+              if (withPoints.length > 0) {
+                apiData.push({ url, data });
+                logger.api(`Найдено ${withPoints.length} товаров с баллами`);
+              }
             }
           } catch (e) {
             // Не JSON, игнорируем
